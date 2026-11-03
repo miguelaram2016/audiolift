@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.mjs"
@@ -24,7 +24,7 @@
     "typescript": "^5.9.0"
   },
   "engines": {
-    "node": ">=22"
+    "node": "22.x"
   },
   "license": "Apache-2.0"
 }
