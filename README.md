@@ -119,7 +119,7 @@ LICENSE                      Apache License 2.0
 | --- | --- |
 | A video under 10 minutes says it is too long | The feature branch distinguishes unverified length from real over-limit length; use an updated preview deployment. |
 | Video has missing duration metadata | AudioLift now attempts a size-limited source stream; if that fails, YouTube did not make usable audio available to the server. Try Local file. |
-| Link conversion fails after preview | YouTube may restrict source extraction or Vercel may hit a function or bandwidth limit. Use Local file as a fallback. |
+| `UPSTREAM_BOT_CHALLENGE` or `UPSTREAM_LOGIN_REQUIRED` | YouTube may be rejecting automated requests from Vercel's cloud network. This does **not** prove the video is private. Repeated retries or swapping packages cannot reliably solve an IP-level block; export your authorized media and use Local file instead. |\n| Link conversion fails after preview | YouTube may restrict source extraction or Vercel may hit a function or bandwidth limit. Use Local file as a fallback. |
 | Browser conversion is slow or crashes | Try a smaller file or a desktop browser with more RAM. |
 | Rate limited | Try later; limits are best effort and per warm serverless instance. |
 
