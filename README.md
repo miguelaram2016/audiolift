@@ -4,13 +4,27 @@
 
 **Convert your own audio and video to MP3, including permitted YouTube links.**
 
-A responsive, open-source audio converter built with **Next.js, TypeScript, and FFmpeg WebAssembly**. No login, no account, and no separate paid processing server.
+A responsive, open-source audio converter built with **Next.js, TypeScript, and FFmpeg WebAssembly**. No login or user account; this isolated trial connects to an optional free worker only after explicit safety checks.
 
 [Try the site](https://audiolift-miguelaram2016s-projects.vercel.app) · [Source code](https://github.com/miguelaram2016/audiolift) · [How to use](#how-to-use) · [Fork or clone](#fork-or-clone) · [Deploy](#deploy-your-own-copy) · [License](#license)
 
 </div>
 
 > **Status:** The main branch is the original portfolio MVP. This experimental feature branch implements a limited, no-additional-cost YouTube-link workflow. Compilation and tests are required for the preview build, but a successful YouTube audio stream and downloaded MP3 have **not** been independently verified end to end. Treat YouTube compatibility as experimental.
+
+## Isolated Render Free trial (this branch only)
+
+This branch is **not** the original Vercel-only extraction experiment. It tests the known-working local `yt-dlp` + FFmpeg Docker worker on an external **Render Free** web service, without changing production. The connection is disabled by default, and no worker has been created or deployed. See [the deployment gates and full test checklist](docs/render-free-trial.md).
+
+For the experimental branch only:
+- **YouTube link:** Vercel preview `/api/convert` → private server-to-server API key → Render `POST /jobs` → Render converts using `yt-dlp` + native FFmpeg → Vercel polls job status → the browser submits a short-lived token in a **form POST** to download `audio/mpeg`. **No token in query strings.**
+- **Local file:** still converted entirely in the user's browser with FFmpeg WebAssembly.
+- **Limits:** one active job, up to two retained jobs, a 10-minute known video duration, 25 MiB source limit, 30 MiB final MP3 cap, at most three trial jobs per hour globally, and eight-minute download retention.
+- **Server-only preview secrets:** `AUDIO_SOURCE_MODE=render-worker`, `CONVERTER_API_BASE_URL`, `CONVERTER_API_KEY` scoped to this branch's Vercel Preview environment. The worker gets the same API key privately. No account or key is required from visitors.
+- **Availability:** Render Free sleeps after fifteen idle minutes, so first job may take about a minute to wake; files and job states are not persistent.
+- **Hard gate:** first confirm intended Render workspace and confirm absence of a payment method or a verified $0 overage policy covering bandwidth **and** build minutes. No keep-awake pings until after live tests and that gate are satisfied.
+
+**Status:** Preview compiles; Render worker runtime and authorized MP3 download have **not** been tested on Render. Preserve `main` and draft PR #1 until the full flow is proven.
 
 ## Features
 
@@ -20,7 +34,7 @@ A responsive, open-source audio converter built with **Next.js, TypeScript, and 
 - 📱 Responsive interface, progress feedback, and clear error messages.
 - 🔓 Apache License 2.0; clone, fork, customize, and self-host.
 
-**No paid backend is required** for the experimental path. The app streams source audio through a capped Vercel Hobby function; FFmpeg then converts it locally in the browser. That avoids paying for Render, Vercel Sandbox, or object storage. It does not eliminate Vercel's free-tier limits or guarantee that YouTube permits automated extraction.
+**Branch note:** The Vercel-only method above describes the parent branch and is not active in this Render-trial branch. The trial uses a separate free worker and does not guarantee zero charges if a payment method is attached. Consult [the gating checklist](docs/render-free-trial.md) before creating anything.
 
 ## How to use
 
@@ -38,7 +52,7 @@ Your local file is processed in your browser. Encoding speed and supported forma
 1. Choose **YouTube link** and paste a standard watch, short, or supported YouTube video URL.
 2. Review the video's preview and select the MP3 quality.
 3. Read the notice: **By using AudioLift, you confirm that you own the content you download or have permission to download and convert it, in accordance with YouTube's terms and applicable law.** There is no checkbox.
-4. Click **Convert link to MP3**. The service fetches the source audio, then your browser encodes and downloads the MP3.
+4. Click **Convert link to MP3**. The trial worker performs server-side MP3 encoding, then your browser downloads the file directly from Render using a short-lived form token.
 
 YouTube can decline or restrict extraction for some videos. Live/upcoming streams, protected videos, and unavailable audio cannot be processed. **A verified duration over 10 minutes is rejected**. If duration metadata is missing or unreliable, AudioLift **attempts the download instead of wrongly rejecting the video as too long**; all streams remain limited to 25 MiB. Such conversions may still fail if YouTube does not provide playable audio.
 
@@ -50,12 +64,12 @@ YouTube can decline or restrict extraction for some videos. Live/upcoming stream
 | --- | --- | --- |
 | Next.js / React frontend | Vercel Hobby | Responsive UI; URL and file modes |
 | YouTube URL validation and metadata | Vercel Node.js functions | Only supported HTTPS YouTube URLs |
-| Source audio stream | Vercel Node.js function (experimental) | 10-minute duration limit; 25 MiB audio cap |
-| MP3 encoding | User's browser | FFmpeg WebAssembly; no server-side MP3 files |
-| Storage / database | None | Browser download; no conversion history |
-| Auth secret | None for the experimental link flow | No shared `CONVERTER_API_KEY` required |
+| YouTube link worker | Render Free Docker web service (trial only) | yt-dlp + native FFmpeg; 10 minutes / 25 MiB source |
+| MP3 encoding | Render for links; user browser for local files | Temporary MP3s expire after eight minutes |
+| Storage / database | Render ephemeral filesystem only; no database | No durable job history |
+| Auth secret | Render + Vercel preview backend only | Shared `CONVERTER_API_KEY`; never browser-visible |
 
-Basic request throttling (two attempts per IP in 30 minutes **per warm function instance**) reduces accidental load but is **not durable security protection**. Vercel's free quota may stop the service when exhausted; it will not automatically buy paid hosting. The legacy `worker/` prototype and optional `.env.example` remain in the repository for those who choose to self-host separately; this experimental pipeline does **not** use that worker or its key.
+Basic request throttling (two attempts per IP in 30 minutes **per warm function instance**) reduces accidental load but is **not durable security protection**. Vercel's free quota may stop the service when exhausted; it will not automatically buy paid hosting. This trial **does** use the `worker/` Docker prototype and its private server-to-server API key; it remains entirely disabled until preview environment variables are configured.
 
 ## Fork or clone
 
