@@ -40,7 +40,7 @@ Your local file is processed in your browser. Encoding speed and supported forma
 3. Read the notice: **By using AudioLift, you confirm that you own the content you download or have permission to download and convert it, in accordance with YouTube's terms and applicable law.** There is no checkbox.
 4. Click **Convert link to MP3**. The service fetches the source audio, then your browser encodes and downloads the MP3.
 
-YouTube can decline or restrict extraction for some videos. Live/upcoming streams, protected videos, and unavailable audio cannot be processed. **A verified duration over 10 minutes is rejected**. If duration metadata is missing or unreliable, you receive an **unable to verify length** error rather than a misleading **over 10 minutes** message. Audio streams are capped at 25 MiB.
+YouTube can decline or restrict extraction for some videos. Live/upcoming streams, protected videos, and unavailable audio cannot be processed. **A verified duration over 10 minutes is rejected**. If duration metadata is missing or unreliable, AudioLift **attempts the download instead of wrongly rejecting the video as too long**; all streams remain limited to 25 MiB. Such conversions may still fail if YouTube does not provide playable audio.
 
 **Important:** A usage disclaimer is not proof of permission and does not override copyright law, YouTube's terms, or access controls. For your own YouTube uploads, you can also export via YouTube Studio and then convert that local file.
 
@@ -118,7 +118,7 @@ LICENSE                      Apache License 2.0
 | Problem | Explanation / next step |
 | --- | --- |
 | A video under 10 minutes says it is too long | The feature branch distinguishes unverified length from real over-limit length; use an updated preview deployment. |
-| Video duration cannot be verified | YouTube omitted or returned invalid duration metadata and no reliable audio-format estimate was available. Try another video or Local file. |
+| Video has missing duration metadata | AudioLift now attempts a size-limited source stream; if that fails, YouTube did not make usable audio available to the server. Try Local file. |
 | Link conversion fails after preview | YouTube may restrict source extraction or Vercel may hit a function or bandwidth limit. Use Local file as a fallback. |
 | Browser conversion is slow or crashes | Try a smaller file or a desktop browser with more RAM. |
 | Rate limited | Try later; limits are best effort and per warm serverless instance. |
