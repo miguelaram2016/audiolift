@@ -130,8 +130,11 @@ docker build -t audiolift-worker ./worker
 Set a long, unique, random shared secret and use it **only** on your trusted backend. For example, generate it with `openssl rand -hex 32`; do not paste it into source control.
 
 ```bash
+# Create a random key in your local shell; do not save or commit it.
+export CONVERTER_API_KEY="$(openssl rand -hex 32)"
+
 docker run --rm -p 10000:10000 \
-  -e CONVERTER_API_KEY="YOUR_LONG_SECRET" \
+  -e CONVERTER_API_KEY \
   -e PUBLIC_BASE_URL="http://localhost:10000" \
   audiolift-worker
 ```
@@ -142,8 +145,9 @@ In your Vercel project's **Settings → Environment Variables**, set these **ser
 
 ```dotenv
 CONVERTER_API_BASE_URL=https://your-worker.example.com
-CONVERTER_API_KEY=YOUR_LONG_SECRET
 ```
+
+Add `CONVERTER_API_KEY` separately in the Vercel dashboard using the **same random value** from the worker environment. Never use a placeholder key or commit the value.
 
 The same `CONVERTER_API_KEY` must be configured on the worker. Set `PUBLIC_BASE_URL` on the worker to its own public HTTPS origin. Do **not** use `NEXT_PUBLIC_` for keys. Do **not** commit the real values to GitHub.
 
