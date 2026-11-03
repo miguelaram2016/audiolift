@@ -41,9 +41,25 @@ export async function POST(request: Request) {
 
   const diagnosticId = crypto.randomUUID();
   let stage = "loading_metadata";
+  let upstreamFacts: { playability: string; hasStreamingData: boolean; formatCount: number; audioFormatCount: number } | null = null;
   try {
     const youtube = await Innertube.create();
     const info = await youtube.getBasicInfo(id);
+    // Only record non-sensitive facts about the upstream response; never log
+    // the media ID, title, URLs, or raw playability reason.
+    const playability = String(info.playability_status?.status || "UNKNOWN").slice(0, 32);
+    const formats = [
+      ...(info.streaming_data?.adaptive_formats || []),
+      ...(info.streaming_data?.formats || [])
+    ];
+    const audioFormats = formats.filter(f => f.has_audio || f.mime_type?.startsWith("audio/"));
+    const facts = {
+      playability: /^(OK|LOGIN_REQUIRED|UNPLAYABLE|ERROR|LIVE_STREAM_OFFLINE|CONTENT_CHECK_REQUIRED|UNKNOWN)$/.test(playability) ? playability : "OTHER",
+      hasStreamingData: Boolean(info.streaming_data),
+      formatCount: Math.min(formats.length, 1000),
+      audioFormatCount: Math.min(audioFormats.length, 1000)
+    };
+    upstreamFacts = facts;
     const duration = checkVideoDuration(info, MAX_DURATION_SECONDS);
     if (duration.status === "live") {
       return fail("Live or upcoming streams are not supported.", 422);
@@ -57,6 +73,20 @@ export async function POST(request: Request) {
     // Count only eligible attempts against the per-instance rate limit.
     hits.push(now);
     recent.set(ip, hits);
+    if (facts.playability === "LOGIN_REQUIRED") {
+      console.warn("AudioLift upstream playability challenge", { diagnosticId, ...facts });
+      return Response.json(
+        { error: "YouTube rejected this server's unauthenticated playback request. The video itself may be public; use Local file for now. (Code: UPSTREAM_LOGIN_REQUIRED)", code: "UPSTREAM_LOGIN_REQUIRED", diagnosticId: diagnosticId.slice(0, 8) },
+        { status: 502, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+    if (facts.audioFormatCount === 0) {
+      console.warn("AudioLift upstream returned no audio formats", { diagnosticId, ...facts });
+      return Response.json(
+        { error: "YouTube did not offer an audio stream to this server. The video may still be publicly playable. (Code: UPSTREAM_NO_AUDIO_FORMAT)", code: "UPSTREAM_NO_AUDIO_FORMAT", diagnosticId: diagnosticId.slice(0, 8) },
+        { status: 502, headers: { "Cache-Control": "no-store" } }
+      );
+    }
     stage = "opening_stream";
     const source = await info.download({ type: "audio", quality: "best" });
     const reader = source.getReader();
@@ -101,7 +131,7 @@ export async function POST(request: Request) {
         } catch (err) {
           const failure = classifyAudioError(err, "reading_stream");
           console.warn("AudioLift upstream stream failure", {
-            diagnosticId, stage: failure.stage, code: failure.code, upstreamStatus: failure.status
+            diagnosticId, stage: failure.stage, code: failure.code, upstreamStatus: failure.status, ...upstreamFacts
           });
           controller.error(new Error("Source audio stream failed"));
         }
