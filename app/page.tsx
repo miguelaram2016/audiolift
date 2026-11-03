@@ -20,7 +20,6 @@ export default function Home() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [bitrate, setBitrate] = useState<(typeof bitrates)[number]>("192");
-  const [permission, setPermission] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [progress, setProgress] = useState(0);
@@ -124,13 +123,13 @@ export default function Home() {
     }
   };
   const convertLink = async () => {
-    if (!videoId || !permission) return;
+    if (!videoId) return;
     resetResult(); setStage("working"); setProgress(5);
     try {
       const res = await fetch("/api/audio-source", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url, permission: true })
+        body: JSON.stringify({ url })
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null) as { error?: string } | null;
@@ -204,7 +203,7 @@ export default function Home() {
                 <div className={`url-field ${url && !videoId ? "invalid" : ""}`}><Link2 size={18}/><input id="url-input" value={url} onChange={e => { setUrl(e.target.value); resetResult(); }} placeholder="https://youtube.com/watch?v=..." autoCapitalize="off" autoComplete="off" spellCheck={false}/><button type="button" onClick={useClipboard} aria-label="Paste from clipboard"><ClipboardPaste size={18}/></button></div>
                 {url && !videoId ? <p className="input-hint error-color">That doesn&apos;t look like a supported YouTube video link.</p> : <p className="input-hint">Supports youtube.com, youtu.be, Shorts and Live links.</p>}
                 <div className="preview-panel"><span className="field-label preview-caption">VIDEO PREVIEW</span>{preview ? <div className="preview-inner"><div className="video-thumb"><img src={preview.thumbnail} alt="YouTube video thumbnail"/><Play size={20} fill="currentColor"/></div><div className="preview-meta"><strong title={preview.title}>{preview.title}</strong><span>{preview.author}</span><a href={preview.videoUrl} target="_blank" rel="noopener noreferrer">View on YouTube <ExternalLink size={12}/></a></div><CheckCircle2 size={19} className="preview-check"/></div> : <div className="preview-empty"><span className="placeholder-icon">{previewing ? <LoaderCircle size={21} className="spin"/> : <Play size={20} fill="currentColor"/>}</span><div><strong>{previewing ? "Finding your video..." : "Your video will appear here"}</strong><span>Paste a valid link to see its details</span></div></div>}</div>
-                <label className="permission"><input type="checkbox" checked={permission} onChange={e => setPermission(e.target.checked)}/><span>I own this media or have permission to download and convert it.</span></label>
+                <p className="usage-notice"><ShieldCheck size={17} aria-hidden="true"/><span>By using AudioLift, you confirm that you own the content you download or have permission to download and convert it, in accordance with <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer">YouTube’s terms</a> and applicable law.</span></p>
               </> : <>
                 <label className="field-label" htmlFor="media-file">SELECT YOUR AUDIO OR VIDEO FILE</label>
                 <input ref={inputRef} id="media-file" className="sr-only" type="file" accept="audio/*,video/*,.m4a,.mp4,.mov,.webm,.mkv,.wav,.ogg,.flac" onChange={e => {setFile(e.target.files?.[0] || null); resetResult(); }}/>
@@ -219,10 +218,10 @@ export default function Home() {
               <div className="quality-options" role="group" aria-label="MP3 bitrate">{bitrates.map(value => <button type="button" aria-pressed={bitrate === value} key={value} className={bitrate === value ? "selected" : ""} onClick={() => {setBitrate(value); resetResult();}}>{value}{bitrate === value ? <Check size={12}/> : null}</button>)}</div>
               <div className="quality-scale"><span>SMALLER FILE</span><span>HIGHER QUALITY</span></div>
               <div className="settings-divider"/>
-              <div className="conversion-info"><div className="info-icon">{mode === "file" ? <ShieldCheck size={18}/> : <CloudOff size={18}/>}</div><div><strong>{mode === "file" ? "On-device processing" : workerConnected ? "Free conversion preview" : "Converter unavailable"}</strong><span>{mode === "file" ? "Nothing is uploaded to a server." : workerConnected ? "Authorized requests are processed by a separate audio worker." : "Link-to-MP3 download requires the processing service, which isn't connected yet."}</span></div></div>
+              <div className="conversion-info"><div className="info-icon">{mode === "file" ? <ShieldCheck size={18}/> : <CloudOff size={18}/>}</div><div><strong>{mode === "file" ? "On-device processing" : workerConnected ? "Free conversion preview" : "Converter unavailable"}</strong><span>{mode === "file" ? "Nothing is uploaded to a server." : workerConnected ? "Audio is streamed through a limited Vercel function and converted to MP3 in your browser." : "Link-to-MP3 download requires the processing service, which isn't connected yet."}</span></div></div>
               {stage === "working" ? <div className="progress-box" role="status" aria-live="polite"><div className="progress-title"><span><LoaderCircle size={16} className="spin"/> {mode === "file" ? "Encoding audio" : "Preparing audio"}</span><strong>{progress}%</strong></div><div className="progress-track"><span style={{width: `${progress}%`}}/></div><small>Keep this tab open until the conversion finishes.</small></div> : null}
               {stage === "error" && error ? <div className="alert-error" role="alert"><CircleHelp size={17}/><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss message"><X size={14}/></button></div> : null}
-              {stage === "ready" && downloadHref ? <a className="primary-button ready-button" href={downloadHref} download={fileName} target={downloadHref.startsWith("blob:") ? undefined : "_blank"} rel="noopener noreferrer"><ArrowDownToLine size={20}/> Download {fileName}</a> : <button className="primary-button" onClick={mode === "link" ? convertLink : convertFile} disabled={stage === "working" || (mode === "link" ? !videoId || !permission || !workerConnected : !file)}>{stage === "working" ? <><LoaderCircle size={19} className="spin"/> Converting...</> : <><ArrowDownToLine size={19}/> {mode === "file" ? "Convert to MP3" : "Convert link to MP3"}<ArrowRight size={18} className="button-arrow"/></>}</button>}
+              {stage === "ready" && downloadHref ? <a className="primary-button ready-button" href={downloadHref} download={fileName} target={downloadHref.startsWith("blob:") ? undefined : "_blank"} rel="noopener noreferrer"><ArrowDownToLine size={20}/> Download {fileName}</a> : <button className="primary-button" onClick={mode === "link" ? convertLink : convertFile} disabled={stage === "working" || (mode === "link" ? !videoId || !workerConnected : !file)}>{stage === "working" ? <><LoaderCircle size={19} className="spin"/> Converting...</> : <><ArrowDownToLine size={19}/> {mode === "file" ? "Convert to MP3" : "Convert link to MP3"}<ArrowRight size={18} className="button-arrow"/></>}</button>}
               <div className="button-note"><ShieldCheck size={13}/>{mode === "file" ? "Files never leave your browser" : !workerConnected ? "Link download is temporarily unavailable" : "10-minute limit · Own media or permitted downloads only"}</div>
             </div>
           </div>
