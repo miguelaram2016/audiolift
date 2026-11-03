@@ -12,6 +12,20 @@ A responsive, open-source audio converter built with **Next.js**, **TypeScript**
 
 > **Project status:** Portfolio MVP. The local-file converter and YouTube link preview are implemented, but a browser conversion smoke test and cloud build still need verification. **YouTube URL → MP3 downloading requires a separate processing worker**; it does not work on a frontend-only Vercel deployment. No public end-to-end URL conversion has been verified yet.
 
+## Experimental zero-cost YouTube pipeline (feature branch)
+
+This branch experiments with **no separate conversion service and no paid hosting**:
+
+1. A rate- and size-limited Vercel Hobby function validates the permitted YouTube URL, checks duration, and streams source audio to the same-origin browser.
+2. Your browser converts that audio to MP3 using FFmpeg WebAssembly and provides a local download.
+3. Nothing is stored in a conversion database, and no shared `CONVERTER_API_KEY` is needed for this experimental mode.
+
+**Limits:** non-live videos up to **10 minutes**, source audio up to **25 MiB**, plus an indicative **two attempts per browser IP per 30 minutes** enforced per warm function instance (not a durable abuse limit). Free Hobby quotas can halt service, and extraction may fail due to YouTube restrictions. The browser still needs memory and CPU to encode.
+
+**Status: experimental, not verified end-to-end.** The preview build and TypeScript checks pass, but no real YouTube audio stream, browser MP3 conversion, or final download has been confirmed. Do not claim this is a fully working public converter until tested. The stable main branch retains the original preview-only workflow and optional worker architecture.
+
+Vercel Hobby is free within usage limits; do not enable paid Sandbox/Blob services or upgrade the plan. Restrict and monitor usage before launching publicly. Only process media where downloading and conversion are authorized and permitted by the platform.
+
 ## What is AudioLift?
 
 AudioLift puts a straightforward MP3 conversion flow behind a clean, mobile-friendly interface. It has two modes:
