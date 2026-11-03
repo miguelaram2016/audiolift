@@ -149,8 +149,12 @@ export async function POST(request: Request) {
   } catch (err) {
     const failure = classifyAudioError(err, stage);
     // Never log the raw exception: YouTube's errors can include signed URLs.
+    const errorKind = err instanceof TypeError ? "TypeError" : err instanceof RangeError ? "RangeError" :
+      err instanceof Error && ["PlayerError", "InnertubeError", "Error", "SyntaxError"].includes(err.name)
+        ? err.name : "Other";
     console.warn("AudioLift upstream request failure", {
-      diagnosticId, stage: failure.stage, code: failure.code, upstreamStatus: failure.status
+      diagnosticId, stage: failure.stage, code: failure.code, upstreamStatus: failure.status,
+      errorKind, ...upstreamFacts
     });
     return Response.json(
       {
