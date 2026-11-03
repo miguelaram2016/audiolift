@@ -45,9 +45,9 @@ export async function POST(request: Request) {
     if (duration.status === "live") {
       return fail("Live or upcoming streams are not supported.", 422);
     }
-    if (duration.status === "unknown") {
-      return fail("YouTube did not provide a reliable video duration. Please try another video or convert a local file.", 422);
-    }
+    // YouTube can omit duration even for short, otherwise accessible videos.
+    // In that case, attempt the media stream; the strict 25 MiB cap still applies.
+    // Only reject a video when its duration is known to exceed the limit.
     if (duration.status === "too_long") {
       return fail("This video exceeds the current 10-minute limit.", 422);
     }
