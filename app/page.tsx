@@ -25,6 +25,7 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
   const [downloadHref, setDownloadHref] = useState("");
+  const [downloadToken, setDownloadToken] = useState("");
   const [fileName, setFileName] = useState("audiolift.mp3");
   const [jobId, setJobId] = useState<string | null>(null);
   const [workerConnected, setWorkerConnected] = useState<boolean | null>(null);
@@ -33,7 +34,7 @@ export default function Home() {
   const videoId = getYoutubeVideoId(url);
 
   const resetResult = useCallback(() => {
-    setError(""); setStage("idle"); setProgress(0); setDownloadHref(""); setJobId(null);
+    setError(""); setStage("idle"); setProgress(0); setDownloadHref(""); setDownloadToken(""); setJobId(null);
     if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
   }, []);
 
@@ -67,11 +68,11 @@ export default function Home() {
       try {
         const res = await fetch(`/api/jobs/${jobId}`, { cache: "no-store" });
         if (!res.ok) throw new Error("Unable to check conversion status.");
-        const data = await res.json() as { status: string; progress?: number; downloadUrl?: string; filename?: string; error?: string };
+        const data = await res.json() as { status: string; progress?: number; downloadUrl?: string; downloadToken?: string; filename?: string; error?: string };
         if (!alive) return;
         setProgress(Math.min(95, Math.max(0, data.progress || 0)));
-        if (data.status === "completed" && data.downloadUrl) {
-          setDownloadHref(data.downloadUrl); setFileName(data.filename || "audiolift.mp3"); setProgress(100); setStage("ready"); setJobId(null); return;
+        if (data.status === "completed" && data.downloadUrl && data.downloadToken) {
+          setDownloadToken(data.downloadToken); setDownloadHref(data.downloadUrl); setFileName(data.filename || "audiolift.mp3"); setProgress(100); setStage("ready"); setJobId(null); return;
         }
         if (data.status === "failed") throw new Error(data.error || "Could not convert this video.");
         timer = setTimeout(poll, 1700);
@@ -123,40 +124,17 @@ export default function Home() {
     }
   };
   const convertLink = async () => {
-    if (!videoId) return;
+    if (!videoId || !workerConnected) return;
     resetResult(); setStage("working"); setProgress(5);
     try {
-      const res = await fetch("/api/audio-source", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url })
+      const res = await fetch("/api/convert", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url, bitrate })
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null) as { error?: string } | null;
-        throw new Error(data?.error || "Could not retrieve audio from this link.");
-      }
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("Your browser does not support streaming downloads.");
-      const chunks: ArrayBuffer[] = [];
-      let received = 0;
-      const maxBytes = 25 * 1024 * 1024;
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          received += value.byteLength;
-          if (received > maxBytes) throw new Error("Source audio exceeded the free 25 MB limit.");
-          const bytes = new Uint8Array(value.byteLength); bytes.set(value);
-          chunks.push(bytes.buffer);
-          setProgress(Math.min(48, 10 + Math.round(received / maxBytes * 38)));
-        }
-      } catch (err) {
-        await reader.cancel().catch(() => {});
-        throw err;
-      }
-      if (!received) throw new Error("The source did not return audio.");
-      setProgress(50);
-      await encodeAudio(new Blob(chunks), `youtube-${videoId}.bin`, true);
+      const data = await res.json() as { error?: string; jobId?: string };
+      if (!res.ok) throw new Error(data.error || "The trial converter could not start.");
+      if (!data.jobId) throw new Error("Trial worker did not return a job ID.");
+      setJobId(data.jobId); setProgress(12);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Link conversion failed.");
       setStage("error"); setProgress(0);
@@ -218,10 +196,10 @@ export default function Home() {
               <div className="quality-options" role="group" aria-label="MP3 bitrate">{bitrates.map(value => <button type="button" aria-pressed={bitrate === value} key={value} className={bitrate === value ? "selected" : ""} onClick={() => {setBitrate(value); resetResult();}}>{value}{bitrate === value ? <Check size={12}/> : null}</button>)}</div>
               <div className="quality-scale"><span>SMALLER FILE</span><span>HIGHER QUALITY</span></div>
               <div className="settings-divider"/>
-              <div className="conversion-info"><div className="info-icon">{mode === "file" ? <ShieldCheck size={18}/> : <CloudOff size={18}/>}</div><div><strong>{mode === "file" ? "On-device processing" : workerConnected ? "Free conversion preview" : "Converter unavailable"}</strong><span>{mode === "file" ? "Nothing is uploaded to a server." : workerConnected ? "Audio is streamed through a limited Vercel function and converted to MP3 in your browser." : "Link-to-MP3 download requires the processing service, which isn't connected yet."}</span></div></div>
+              <div className="conversion-info"><div className="info-icon">{mode === "file" ? <ShieldCheck size={18}/> : <CloudOff size={18}/>}</div><div><strong>{mode === "file" ? "On-device processing" : workerConnected ? "Render trial worker configured" : "Converter unavailable"}</strong><span>{mode === "file" ? "Nothing is uploaded to a server." : workerConnected ? "The temporary worker generates MP3 files and may take a minute to wake up. Downloads expire after 8 minutes." : "Link-to-MP3 download requires the trial worker, which has not been connected yet."}</span></div></div>
               {stage === "working" ? <div className="progress-box" role="status" aria-live="polite"><div className="progress-title"><span><LoaderCircle size={16} className="spin"/> {mode === "file" ? "Encoding audio" : "Preparing audio"}</span><strong>{progress}%</strong></div><div className="progress-track"><span style={{width: `${progress}%`}}/></div><small>Keep this tab open until the conversion finishes.</small></div> : null}
               {stage === "error" && error ? <div className="alert-error" role="alert"><CircleHelp size={17}/><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss message"><X size={14}/></button></div> : null}
-              {stage === "ready" && downloadHref ? <a className="primary-button ready-button" href={downloadHref} download={fileName} target={downloadHref.startsWith("blob:") ? undefined : "_blank"} rel="noopener noreferrer"><ArrowDownToLine size={20}/> Download {fileName}</a> : <button className="primary-button" onClick={mode === "link" ? convertLink : convertFile} disabled={stage === "working" || (mode === "link" ? !videoId || !workerConnected : !file)}>{stage === "working" ? <><LoaderCircle size={19} className="spin"/> Converting...</> : <><ArrowDownToLine size={19}/> {mode === "file" ? "Convert to MP3" : "Convert link to MP3"}<ArrowRight size={18} className="button-arrow"/></>}</button>}
+              {stage === "ready" && downloadHref ? (downloadToken ? <form action={downloadHref} method="post" target="_blank" className="download-form"><input type="hidden" name="token" value={downloadToken}/><button type="submit" className="primary-button ready-button"><ArrowDownToLine size={20}/> Download {fileName}</button></form> : <a className="primary-button ready-button" href={downloadHref} download={fileName}><ArrowDownToLine size={20}/> Download {fileName}</a>) : <button className="primary-button" onClick={mode === "link" ? convertLink : convertFile} disabled={stage === "working" || (mode === "link" ? !videoId || !workerConnected : !file)}>{stage === "working" ? <><LoaderCircle size={19} className="spin"/> Converting...</> : <><ArrowDownToLine size={19}/> {mode === "file" ? "Convert to MP3" : "Convert link to MP3"}<ArrowRight size={18} className="button-arrow"/></>}</button>}
               <div className="button-note"><ShieldCheck size={13}/>{mode === "file" ? "Files never leave your browser" : !workerConnected ? "Link download is temporarily unavailable" : "10-minute limit · Own media or permitted downloads only"}</div>
             </div>
           </div>
