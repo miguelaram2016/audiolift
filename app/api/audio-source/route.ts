@@ -1,5 +1,6 @@
 import { Innertube } from "youtubei.js";
 import { getYoutubeVideoId } from "@/lib/youtube";
+import { checkVideoDuration } from "@/lib/video-duration.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -23,12 +24,12 @@ export async function POST(request: Request) {
   if (!(request.headers.get("content-type") || "").includes("application/json")) return fail("Expected JSON.", 415);
   if (Number(request.headers.get("content-length") || 0) > 2048) return fail("Request too large.", 413);
 
-  let input: { url?: unknown; permission?: unknown };
+  let input: { url?: unknown };
   try { input = await request.json(); }
   catch { return fail("Invalid request body.", 400); }
 
   const id = typeof input.url === "string" ? getYoutubeVideoId(input.url) : null;
-  if (!id || input.permission !== true) return fail("Valid YouTube URL and permission confirmation are required.", 400);
+  if (!id) return fail("Enter a valid supported YouTube video URL.", 400);
 
   // Lightweight per-instance rate limiting. Not a substitute for durable limits/WAF.
   const ip = (request.headers.get("x-real-ip") || request.headers.get("x-forwarded-for")?.split(",")[0] || "anonymous").slice(0, 90);
@@ -36,16 +37,23 @@ export async function POST(request: Request) {
   if (recent.size > 1000) for (const [key, entries] of recent) if (entries.every(t => now - t >= WINDOW_MS)) recent.delete(key);
   const hits = (recent.get(ip) || []).filter(t => now - t < WINDOW_MS);
   if (hits.length >= 2) return fail("Free converter limit reached. Try again later.", 429);
-  hits.push(now);
-  recent.set(ip, hits);
 
   try {
     const youtube = await Innertube.create();
     const info = await youtube.getBasicInfo(id);
-    const duration = info.basic_info?.duration;
-    if (!duration || !Number.isFinite(duration) || duration > MAX_DURATION_SECONDS || info.basic_info?.is_live || info.basic_info?.is_live_content) {
-      return fail("Only available non-live videos up to 10 minutes can be converted.", 422);
+    const duration = checkVideoDuration(info, MAX_DURATION_SECONDS);
+    if (duration.status === "live") {
+      return fail("Live or upcoming streams are not supported.", 422);
     }
+    if (duration.status === "unknown") {
+      return fail("YouTube did not provide a reliable video duration. Please try another video or convert a local file.", 422);
+    }
+    if (duration.status === "too_long") {
+      return fail("This video exceeds the current 10-minute limit.", 422);
+    }
+    // Count only eligible attempts against the per-instance rate limit.
+    hits.push(now);
+    recent.set(ip, hits);
     const source = await info.download({ type: "audio", quality: "best" });
     let sent = 0;
     const reader = source.getReader();
