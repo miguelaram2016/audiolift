@@ -23,3 +23,17 @@ test("privacy: classification never includes the original message", () => {
   const result = classifyAudioError(new Error("Bearer example-private-credential"), "opening_stream");
   assert.ok(!JSON.stringify(result).includes("example-private-credential"));
 });
+
+test("YouTube not-a-bot interstitial is not called a private video", () => {
+  const result = classifyAudioError(new Error("Sign in to confirm you're not a bot"), "opening_stream");
+  assert.equal(result.code, "UPSTREAM_BOT_CHALLENGE");
+  assert.match(result.userMessage, /server/i);
+});
+test("ambiguous login required message is not treated as private content", () => {
+  const result = classifyAudioError(new Error("LOGIN_REQUIRED"), "opening_stream");
+  assert.equal(result.code, "UPSTREAM_LOGIN_REQUIRED");
+});
+test("explicit age restriction remains an access restriction", () => {
+  const result = classifyAudioError(new Error("Video is age restricted"), "opening_stream");
+  assert.equal(result.code, "ACCESS_RESTRICTED");
+});
