@@ -8,4 +8,4 @@ RUN useradd --create-home --uid 10001 audiolift && mkdir -p /data && chown audio
 USER audiolift
 ENV PORT=10000 PYTHONUNBUFFERED=1 DATA_DIR=/data
 EXPOSE 10000
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 1 --no-access-log"]
