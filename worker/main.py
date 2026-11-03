@@ -168,7 +168,7 @@ async def start_job(
         raise HTTPException(429, detail="Trial conversion limit reached for this hour")
     if len(jobs) >= MAX_JOBS or any(j["status"] in {"queued", "processing"} for j in jobs.values()):
         raise HTTPException(503, detail="Trial converter is busy; retry later")
-    if directory_usage() > MAX_TEMP_BYTES - MAX_BYTES:
+    if directory_usage() > MAX_TEMP_BYTES - (MAX_BYTES + MAX_OUTPUT_BYTES):
         raise HTTPException(507, detail="Trial converter's temporary storage limit reached")
 
     requests_by_ip[ip].append(now)
