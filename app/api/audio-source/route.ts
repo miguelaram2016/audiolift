@@ -64,10 +64,18 @@ export async function POST(request: Request) {
     // Verify that at least one chunk of real media can be read before sending
     // HTTP 200. Otherwise the browser would see a successful response whose
     // body fails immediately with no useful extraction error.
-    const firstChunk = await Promise.race([
-      reader.read(),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Audio source timed out")), 15000))
-    ]);
+    let probeTimer: ReturnType<typeof setTimeout> | undefined;
+    let firstChunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      firstChunk = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) => {
+          probeTimer = setTimeout(() => reject(new Error("Audio source timed out")), 15000);
+        })
+      ]);
+    } finally {
+      if (probeTimer) clearTimeout(probeTimer);
+    }
     if (firstChunk.done || !firstChunk.value?.byteLength) {
       return fail("YouTube returned an empty audio stream.", 502);
     }
