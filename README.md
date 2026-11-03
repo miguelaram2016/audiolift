@@ -2,226 +2,133 @@
 
 # AudioLift 🎧
 
-**Turn your own video or audio into a downloadable MP3.**
+**Convert your own audio and video to MP3, including permitted YouTube links.**
 
-A responsive, open-source audio converter built with **Next.js**, **TypeScript**, and **FFmpeg**. Convert an audio/video file privately in your browser, or connect an optional processing worker for **authorized** YouTube video links.
+A responsive, open-source audio converter built with **Next.js, TypeScript, and FFmpeg WebAssembly**. No login, no account, and no separate paid processing server.
 
-[Features](#features) · [How to use](#how-to-use) · [Run locally](#run-locally) · [Fork-or-clone](#fork-or-clone) · [Deploy](#deploy-your-own-copy) · [License](#license)
+[Try the site](https://audiolift-miguelaram2016s-projects.vercel.app) · [Source code](https://github.com/miguelaram2016/audiolift) · [How to use](#how-to-use) · [Fork or clone](#fork-or-clone) · [Deploy](#deploy-your-own-copy) · [License](#license)
 
 </div>
 
-> **Project status:** Portfolio MVP. The local-file converter and YouTube link preview are implemented, but a browser conversion smoke test and cloud build still need verification. **YouTube URL → MP3 downloading requires a separate processing worker**; it does not work on a frontend-only Vercel deployment. No public end-to-end URL conversion has been verified yet.
+> **Status:** The main branch is the original portfolio MVP. This experimental feature branch implements a limited, no-additional-cost YouTube-link workflow. Compilation and tests are required for the preview build, but a successful YouTube audio stream and downloaded MP3 have **not** been independently verified end to end. Treat YouTube compatibility as experimental.
 
-## Experimental zero-cost YouTube pipeline (feature branch)
+## Features
 
-This branch experiments with **no separate conversion service and no paid hosting**:
+- 🎵 **Local file → MP3:** Select an audio/video file, choose 128, 192, 256, or 320 kbps, and encode it in your browser. The file stays on your device.
+- 🔗 **Permitted YouTube link → MP3 (experimental):** Paste a supported video URL, preview it, choose a bitrate, and download the audio encoded by your browser.
+- 🛡️ Restrictive YouTube URL validation, response-size caps, short-video duration checks, and basic request throttling.
+- 📱 Responsive interface, progress feedback, and clear error messages.
+- 🔓 Apache License 2.0; clone, fork, customize, and self-host.
 
-1. A rate- and size-limited Vercel Hobby function validates the permitted YouTube URL, checks duration, and streams source audio to the same-origin browser.
-2. Your browser converts that audio to MP3 using FFmpeg WebAssembly and provides a local download.
-3. Nothing is stored in a conversion database, and no shared `CONVERTER_API_KEY` is needed for this experimental mode.
-
-**Limits:** non-live videos up to **10 minutes**, source audio up to **25 MiB**, plus an indicative **two attempts per browser IP per 30 minutes** enforced per warm function instance (not a durable abuse limit). Free Hobby quotas can halt service, and extraction may fail due to YouTube restrictions. The browser still needs memory and CPU to encode.
-
-**Status: experimental, not verified end-to-end.** The preview build and TypeScript checks pass, but no real YouTube audio stream, browser MP3 conversion, or final download has been confirmed. Do not claim this is a fully working public converter until tested. The stable main branch retains the original preview-only workflow and optional worker architecture.
-
-Vercel Hobby is free within usage limits; do not enable paid Sandbox/Blob services or upgrade the plan. Restrict and monitor usage before launching publicly. Only process media where downloading and conversion are authorized and permitted by the platform.
-
-## What is AudioLift?
-
-AudioLift puts a straightforward MP3 conversion flow behind a clean, mobile-friendly interface. It has two modes:
-
-| Mode | What happens | Requirements |
-| --- | --- | --- |
-| **File → MP3** | Pick an audio/video file, select a bitrate, convert locally using FFmpeg WebAssembly, and download the result. | Modern browser; no server upload. |
-| **YouTube link → MP3** | Paste a supported YouTube URL, preview its metadata, confirm permission, choose a bitrate, and submit a conversion job to a separate worker. | A configured, reachable worker; a permitted/authorized source; external hosting. |
-
-### Features
-
-- Responsive interface with accessible labels, conversion feedback, and clear error messages.
-- YouTube `watch`, `youtu.be`, Shorts and `/live/` video **links recognized for metadata lookup**; actual live streams are not supported for conversion.
-- Link title, creator and thumbnail preview via YouTube oEmbed when available.
-- MP3 output options: **128, 192, 256, or 320 kbps**. Selecting a higher bitrate cannot restore detail missing from the source.
-- **On-device file conversion** using WebAssembly, with a 100 MB source-file limit to reduce browser memory pressure.
-- Optional Dockerized FastAPI worker using `yt-dlp` and FFmpeg for permitted YouTube links.
-- Server-side worker secrets, rate and duration limits, basic job status tracking, and temporary download links.
-- No database or user account required for the portfolio MVP.
+**No paid backend is required** for the experimental path. The app streams source audio through a capped Vercel Hobby function; FFmpeg then converts it locally in the browser. That avoids paying for Render, Vercel Sandbox, or object storage. It does not eliminate Vercel's free-tier limits or guarantee that YouTube permits automated extraction.
 
 ## How to use
 
-### Option A — Convert a file (no worker needed)
+### Convert a local file
 
-1. Open AudioLift and select the **File** tab.
-2. Choose a supported local audio or video file (up to **100 MB**).
-3. Pick an MP3 bitrate.
-4. Select **Convert to MP3**, then download the result.
+1. Open AudioLift and select **Local file**.
+2. Choose an audio/video file (up to 100 MB).
+3. Choose your MP3 bitrate, then select **Convert to MP3**.
+4. Download the result.
 
-The selected source file is processed in your browser, rather than uploaded to the AudioLift server. The FFmpeg WebAssembly code is loaded separately by the browser. Performance and format support depend on your device and browser.
+Your local file is processed in your browser. Encoding speed and supported formats depend on your device.
 
-### Option B — Convert an authorized YouTube link (worker required)
+### Convert a YouTube link (experimental feature branch)
 
-1. Open the **Link** tab and paste a YouTube video URL.
-2. Check the video preview and choose the output bitrate.
-3. Confirm you own the media or have the permissions required to download and convert it.
-4. Select **Convert link to MP3**, then download the result when the job finishes.
+1. Choose **YouTube link** and paste a standard watch, short, or supported YouTube video URL.
+2. Review the video's preview and select the MP3 quality.
+3. Read the notice: **By using AudioLift, you confirm that you own the content you download or have permission to download and convert it, in accordance with YouTube's terms and applicable law.** There is no checkbox.
+4. Click **Convert link to MP3**. The service fetches the source audio, then your browser encodes and downloads the MP3.
 
-If **Convert link to MP3** is unavailable, the site is in preview-only mode: its processing worker has not been connected. Private, age-restricted, geo-blocked, live, or otherwise unavailable videos may not be convertible. The optional worker enforces a **45-minute** default duration limit.
+YouTube can decline or restrict extraction for some videos. Live/upcoming streams, protected videos, and unavailable audio cannot be processed. **A verified duration over 10 minutes is rejected**. If duration metadata is missing or unreliable, you receive an **unable to verify length** error rather than a misleading **over 10 minutes** message. Audio streams are capped at 25 MiB.
 
-**Important:** A checkbox is not proof of permission. Do not use AudioLift to circumvent access controls or download content in violation of copyright or YouTube's terms. A reliable option for your own YouTube uploads is to download them via YouTube Studio first, then use AudioLift's **File** mode.
+**Important:** A usage disclaimer is not proof of permission and does not override copyright law, YouTube's terms, or access controls. For your own YouTube uploads, you can also export via YouTube Studio and then convert that local file.
 
-## Tech stack
+## Architecture and free-tier limits
 
-| Area | Technology |
-| --- | --- |
-| Web UI / API | Next.js App Router, React, TypeScript |
-| Styling | CSS |
-| Local audio processing | `@ffmpeg/ffmpeg` + `@ffmpeg/util` (FFmpeg WebAssembly) |
-| Link preview | YouTube oEmbed |
-| Optional URL processing | Python, FastAPI, `yt-dlp`, native FFmpeg |
-| Hosting | Vercel frontend; separate Docker/container host for worker |
+| Component | Where it runs | Notes |
+| --- | --- | --- |
+| Next.js / React frontend | Vercel Hobby | Responsive UI; URL and file modes |
+| YouTube URL validation and metadata | Vercel Node.js functions | Only supported HTTPS YouTube URLs |
+| Source audio stream | Vercel Node.js function (experimental) | 10-minute duration limit; 25 MiB audio cap |
+| MP3 encoding | User's browser | FFmpeg WebAssembly; no server-side MP3 files |
+| Storage / database | None | Browser download; no conversion history |
+| Auth secret | None for the experimental link flow | No shared `CONVERTER_API_KEY` required |
+
+Basic request throttling (two attempts per IP in 30 minutes **per warm function instance**) reduces accidental load but is **not durable security protection**. Vercel's free quota may stop the service when exhausted; it will not automatically buy paid hosting. The legacy `worker/` prototype and optional `.env.example` remain in the repository for those who choose to self-host separately; this experimental pipeline does **not** use that worker or its key.
 
 ## Fork or clone
 
-To make your own copy, either:
-
-- **Fork:** Once the repository is published on GitHub, use its **Fork** button to create a repository under your own account. Then clone **your fork** and make changes there.
-- **Clone:** Once published, use the commands below to download this project locally without creating a fork.
+**Fork** [the repository](https://github.com/miguelaram2016/audiolift) using GitHub's **Fork** button to develop your own version under your account, or **clone** it directly:
 
 ```bash
 git clone https://github.com/miguelaram2016/audiolift.git
 cd audiolift
+# For this experimental pipeline:
+git switch feature/zero-cost-browser-audio-pipeline
 npm install
 npm run dev
 ```
 
-Then visit **http://localhost:3000**. The GitHub URL above is the *intended repository address*; repository creation/publication is a remaining project milestone, so it will not resolve until that step is done. If using a fork, replace `miguelaram2016` with your GitHub username.
-
-> If you downloaded the source ZIP before the repository is created, extract it, open a terminal in the extracted project folder, and run `npm install` followed by `npm run dev` instead.
+Open **http://localhost:3000**. For your fork, replace the origin with your own repository URL. No API key, worker, or environment variables are required for the experimental flow.
 
 ## Run locally
 
-**Prerequisites:** Node.js **22 or newer** and npm. A modern browser is required for local conversion. For the optional worker, Docker is recommended.
+Requires Node.js 22 and npm, plus a recent desktop or mobile browser with enough memory for WebAssembly.
 
 ```bash
 npm install
-npm run dev
+npm run dev        # Development server
+npm run test       # Duration and URL validation tests
+npm run typecheck  # TypeScript type checks
+npm run build      # Runs tests, then builds production assets
+npm start          # Serve the build
 ```
 
-Visit **http://localhost:3000**.
-
-Commands:
-
-```bash
-npm run dev         # Development server
-npm run test        # URL validation tests
-npm run typecheck   # TypeScript checks
-npm run build       # Production build
-npm start           # Run a production build
-```
-
-**Environment setup:** You do **not** need any environment variables to use the browser-side File mode or YouTube preview. The `.env.example` is only for the optional backend. Never commit API keys or `.env.local`.
+If the YouTube source function cannot retrieve a media stream, that is not necessarily a bug in MP3 encoding: extraction depends on an unofficial API and YouTube network restrictions. The Local file tab does not depend on YouTube.
 
 ## Deploy your own copy
 
-### 1. Frontend — Vercel
+1. Fork the GitHub repository and select the `feature/zero-cost-browser-audio-pipeline` branch if you want to try the experimental link flow.
+2. Import your fork into [Vercel](https://vercel.com/new) with the Next.js defaults; choose the desired deployment branch.
+3. Deploy on a Hobby plan without enabling paid services. **No secret environment variables are required** for the experimental branch.
+4. Verify the local file converter and permitted YouTube test case in your deployed browser before sharing publicly.
+5. Observe Vercel quota and bandwidth limits; add durable rate limiting and real abuse controls before a broad public launch.
 
-1. Push your fork/clone to GitHub.
-2. In [Vercel](https://vercel.com/new), choose **Add New → Project**, import your GitHub repository, and use the Next.js defaults.
-3. Deploy. The File converter and YouTube metadata preview do not require your own conversion server. Validate file conversion in the deployed browser before sharing.
-4. Leave the two backend environment variables **unset** unless you have deployed a trusted worker.
-
-**Vercel alone is not a complete URL-to-MP3 service.** Serverless functions are used for API orchestration; they are not intended to perform long downloads/encodes or relay large generated files. The optional worker serves completed MP3s directly from its own HTTPS host.
-
-### 2. Optional URL conversion worker — Docker/container hosting
-
-You only need this section if you want to run authorized YouTube-link conversions. Deploy the `worker/` directory to a host that supports a long-running Docker service, such as a private container host or a properly configured Render web service.
-
-**Example local Docker build from the repository root:**
-
-```bash
-docker build -t audiolift-worker ./worker
-```
-
-Set a long, unique, random shared secret and use it **only** on your trusted backend. For example, generate it with `openssl rand -hex 32`; do not paste it into source control.
-
-```bash
-# Create a random key in your local shell; do not save or commit it.
-export CONVERTER_API_KEY="$(openssl rand -hex 32)"
-
-docker run --rm -p 10000:10000 \
-  -e CONVERTER_API_KEY \
-  -e PUBLIC_BASE_URL="http://localhost:10000" \
-  audiolift-worker
-```
-
-Verify the local worker health endpoint at `http://localhost:10000/health`. The worker will not be reachable from Vercel at `localhost`; a deployed worker needs a public **HTTPS** hostname. Give its container a writable temporary directory, and keep it to **one instance**; job state is held in memory.
-
-In your Vercel project's **Settings → Environment Variables**, set these **server-side** variables and redeploy:
-
-```dotenv
-CONVERTER_API_BASE_URL=https://your-worker.example.com
-```
-
-Add `CONVERTER_API_KEY` separately in the Vercel dashboard using the **same random value** from the worker environment. Never use a placeholder key or commit the value.
-
-The same `CONVERTER_API_KEY` must be configured on the worker. Set `PUBLIC_BASE_URL` on the worker to its own public HTTPS origin. Do **not** use `NEXT_PUBLIC_` for keys. Do **not** commit the real values to GitHub.
-
-Additional optional worker settings:
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `MAX_DURATION_SECONDS` | `2700` | Maximum video duration (45 minutes) |
-| `MAX_SOURCE_BYTES` | `104857600` | Max source download size (100 MiB) |
-| `DATA_DIR` | `/tmp/audiolift` (Docker image: `/data`) | Temporary conversion files; must be writable |
-| `PORT` | `10000` in Docker image | Worker listening port |
-
-**Before enabling publicly:** Verify an actual permitted video conversion, HTTPS download links, job expiry, quotas, error behavior, and the platform's terms. The bundled worker is a **single-instance prototype**, not a production-ready public conversion service. For public scale, add real user authentication, durable queue/storage, monitoring, resource budgets, stronger anti-abuse controls, and a clear permission policy.
+For local-file-only use, you may deploy the stable `main` branch and ignore the optional backend.
 
 ## Project structure
 
 ```text
-audiolift/
-├── app/                 # Next.js app and API routes
-│   ├── api/convert/     # Submits jobs to optional worker
-│   ├── api/jobs/        # Conversion status proxy
-│   ├── api/metadata/    # Safe YouTube preview
-│   └── api/status/      # Worker connectivity status
-├── lib/                 # URL parsing and worker configuration
-├── tests/               # URL validation tests
-├── worker/              # Optional FastAPI + FFmpeg worker (Docker)
-├── .env.example         # Example of optional worker environment
-├── .gitignore           # Ignored secrets, builds and temp files
-├── LICENSE              # Apache License, Version 2.0
-└── README.md            # Documentation
+app/                         Next.js UI, styles, API handlers
+app/api/audio-source/        Experimental, size-limited audio streaming
+app/api/metadata/            YouTube link preview
+app/api/status/              Link conversion availability
+lib/youtube.ts               URL validation and canonical links
+lib/video-duration.mjs       Duration normalization and audio-format fallback
+tests/                       URL parsing and duration unit tests
+worker/                      Older optional self-hosted converter prototype
+.env.example                 Optional legacy worker settings, blank by default
+.gitignore                   Dependencies, build output, and private files
+LICENSE                      Apache License 2.0
 ```
 
 ## Troubleshooting
 
-| Problem | What to try |
+| Problem | Explanation / next step |
 | --- | --- |
-| Link preview loads but conversion button is disabled | No worker configured. Use File mode, or deploy and connect the optional worker. |
-| Worker reports an unavailable video | Confirm the video is accessible, not live/restricted, and you have appropriate rights. Automated extraction may be blocked by YouTube. |
-| Local conversion fails or browser slows | Try a smaller/shorter file or another modern desktop browser. Close memory-intensive tabs. |
-| Can't reach worker from Vercel | Check public HTTPS URL, `CONVERTER_API_KEY`, worker health, host firewall, and deployment logs. |
-| Lost a link-conversion job | Worker restarts clear in-memory jobs. The prototype intentionally does not offer durable job history. |
+| A video under 10 minutes says it is too long | The feature branch distinguishes unverified length from real over-limit length; use an updated preview deployment. |
+| Video duration cannot be verified | YouTube omitted or returned invalid duration metadata and no reliable audio-format estimate was available. Try another video or Local file. |
+| Link conversion fails after preview | YouTube may restrict source extraction or Vercel may hit a function or bandwidth limit. Use Local file as a fallback. |
+| Browser conversion is slow or crashes | Try a smaller file or a desktop browser with more RAM. |
+| Rate limited | Try later; limits are best effort and per warm serverless instance. |
 
 ## Contributing
 
-Fork the repository, create a topic branch, and open a pull request describing the change. Include tests for any behavior changes and run `npm run test`, `npm run typecheck`, and `npm run build` where possible. Do not include downloaded media, private credentials, or `.env.local` in pull requests.
-
-Ideas for improvements: browser conversion tests, conversion job persistence, stricter worker authentication, a disk quota, download cleanup, and accessibility audits.
-
-## Roadmap / verification status
-
-- [x] Responsive UI, URL parsing, and YouTube metadata API implemented.
-- [x] File conversion code and optional worker API implemented.
-- [x] URL validation tests passed.
-- [ ] Verify the production web build and perform a real File → MP3 browser smoke test.
-- [ ] Publish a GitHub repository and connect it to Vercel.
-- [ ] Verify a deployed, authorized YouTube URL → MP3 workflow end to end.
-- [ ] Complete production security and scaling work before offering public conversions.
+Pull requests are welcome. Fork, make a topic branch, document any behavior changes, and run `npm run test`, `npm run typecheck`, and `npm run build`. Do not commit credentials, downloaded media, or private `.env` files. Please include tests for any duration-validation changes.
 
 ## License
 
-Licensed under the **[Apache License, Version 2.0](LICENSE)** (`Apache-2.0`). You may use, modify, fork and redistribute this application, including for commercial purposes, as long as you meet the license conditions such as preserving required notices and identifying modified files. Third-party dependencies have their own licenses.
+Licensed under [Apache License, Version 2.0](LICENSE). You may use, modify, distribute, and build on this project subject to the license conditions.
 
-AudioLift is an independent project and is **not affiliated with or endorsed by YouTube or Google**. The license to the application source code does **not** grant rights to download or redistribute third-party media.
+AudioLift is not affiliated with or endorsed by YouTube. Use it only with media you own or are otherwise permitted to download and convert.
