@@ -10,7 +10,7 @@ A responsive, open-source audio converter built with **Next.js, TypeScript, and 
 
 </div>
 
-> **Status:** The main branch is the original portfolio MVP. This experimental feature branch implements a limited, no-additional-cost YouTube-link workflow. Compilation and tests are required for the preview build, but a successful YouTube audio stream and downloaded MP3 have **not** been independently verified end to end. Treat YouTube compatibility as experimental.
+> **Status:** This **Render-trial branch** is isolated from production. The Vercel preview has built successfully; creating a free Render service and live MP3 testing remain gated on workspace and $0 billing verification. Do not treat the flow as validated.
 
 ## Isolated Render Free trial (this branch only)
 
@@ -29,7 +29,7 @@ For the experimental branch only:
 ## Features
 
 - 🎵 **Local file → MP3:** Select an audio/video file, choose 128, 192, 256, or 320 kbps, and encode it in your browser. The file stays on your device.
-- 🔗 **Permitted YouTube link → MP3 (experimental):** Paste a supported video URL, preview it, choose a bitrate, and download the audio encoded by your browser.
+- 🔗 **Permitted YouTube link → MP3 (experimental):** Paste a supported video URL, preview it, choose a bitrate, and download the MP3 encoded by the temporary Render worker once connected.
 - 🛡️ Restrictive YouTube URL validation, response-size caps, short-video duration checks, and basic request throttling.
 - 📱 Responsive interface, progress feedback, and clear error messages.
 - 🔓 Apache License 2.0; clone, fork, customize, and self-host.
@@ -69,7 +69,7 @@ YouTube can decline or restrict extraction for some videos. Live/upcoming stream
 | Storage / database | Render ephemeral filesystem only; no database | No durable job history |
 | Auth secret | Render + Vercel preview backend only | Shared `CONVERTER_API_KEY`; never browser-visible |
 
-Basic request throttling (two attempts per IP in 30 minutes **per warm function instance**) reduces accidental load but is **not durable security protection**. Vercel's free quota may stop the service when exhausted; it will not automatically buy paid hosting. This trial **does** use the `worker/` Docker prototype and its private server-to-server API key; it remains entirely disabled until preview environment variables are configured.
+The worker enforces two trial attempts per IP and three globally per hour in a single running instance, plus job/size limits. These counters reset on service restart and are **not durable anti-abuse protection**. Render's included free compute does not imply unlimited bandwidth/build minutes or guarantee no charges if a payment method is attached. This trial **does** use the `worker/` Docker prototype and its private server-to-server API key; it remains entirely disabled until preview environment variables are configured.
 
 ## Fork or clone
 
@@ -79,12 +79,12 @@ Basic request throttling (two attempts per IP in 30 minutes **per warm function 
 git clone https://github.com/miguelaram2016/audiolift.git
 cd audiolift
 # For this experimental pipeline:
-git switch feature/zero-cost-browser-audio-pipeline
+git switch experiment/render-worker-preview-20261103
 npm install
 npm run dev
 ```
 
-Open **http://localhost:3000**. For your fork, replace the origin with your own repository URL. No API key, worker, or environment variables are required for the experimental flow.
+Open **http://localhost:3000**. For your fork, replace the origin with your own repository URL. Local-file conversion needs no secrets. To enable YouTube-link conversion in this trial, privately configure the Render worker and three Preview-scoped environment variables described in [the gating checklist](docs/render-free-trial.md).
 
 ## Run locally
 
@@ -103,9 +103,9 @@ If the YouTube source function cannot retrieve a media stream, that is not neces
 
 ## Deploy your own copy
 
-1. Fork the GitHub repository and select the `feature/zero-cost-browser-audio-pipeline` branch if you want to try the experimental link flow.
+1. Fork the GitHub repository and select the `experiment/render-worker-preview-20261103` branch if you want to try the isolated Render trial.
 2. Import your fork into [Vercel](https://vercel.com/new) with the Next.js defaults; choose the desired deployment branch.
-3. Deploy on a Hobby plan without enabling paid services. **No secret environment variables are required** for the experimental branch.
+3. Deploy the frontend on Vercel Hobby. Leave URL conversion **disabled** unless the Render workspace and $0 billing conditions in [docs/render-free-trial.md](docs/render-free-trial.md) have been verified and the backend configured privately.
 4. Verify the local file converter and permitted YouTube test case in your deployed browser before sharing publicly.
 5. Observe Vercel quota and bandwidth limits; add durable rate limiting and real abuse controls before a broad public launch.
 
@@ -121,7 +121,7 @@ app/api/status/              Link conversion availability
 lib/youtube.ts               URL validation and canonical links
 lib/video-duration.mjs       Duration normalization and audio-format fallback
 tests/                       URL parsing and duration unit tests
-worker/                      Older optional self-hosted converter prototype
+worker/                      Dockerized yt-dlp + FFmpeg trial worker
 .env.example                 Optional legacy worker settings, blank by default
 .gitignore                   Dependencies, build output, and private files
 LICENSE                      Apache License 2.0
@@ -133,7 +133,7 @@ LICENSE                      Apache License 2.0
 | --- | --- |
 | A video under 10 minutes says it is too long | The feature branch distinguishes unverified length from real over-limit length; use an updated preview deployment. |
 | Video has missing duration metadata | AudioLift now attempts a size-limited source stream; if that fails, YouTube did not make usable audio available to the server. Try Local file. |
-| `UPSTREAM_BOT_CHALLENGE` or `UPSTREAM_LOGIN_REQUIRED` | YouTube may be rejecting automated requests from Vercel's cloud network. This does **not** prove the video is private. Repeated retries or swapping packages cannot reliably solve an IP-level block; export your authorized media and use Local file instead. |\n| Link conversion fails after preview | YouTube may restrict source extraction or Vercel may hit a function or bandwidth limit. Use Local file as a fallback. |
+| Trial worker unavailable | Render Free may be waking from its idle state or might not have been configured in the isolated preview. Check environment scope before retrying. |\n| URL extraction fails | The Render host may still be refused by YouTube. This requires real worker-side testing; use Local file as fallback. |
 | Browser conversion is slow or crashes | Try a smaller file or a desktop browser with more RAM. |
 | Rate limited | Try later; limits are best effort and per warm serverless instance. |
 
