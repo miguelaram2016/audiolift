@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build --webpack",
+    "build": "npm run test && next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.mjs"
@@ -15,7 +15,8 @@
     "react-dom": "19.2.4",
     "@ffmpeg/ffmpeg": "0.12.15",
     "@ffmpeg/util": "0.12.2",
-    "lucide-react": "^0.468.0"
+    "lucide-react": "^0.468.0",
+    "youtubei.js": "18.3.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

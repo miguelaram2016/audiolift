@@ -20,7 +20,6 @@ export default function Home() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [bitrate, setBitrate] = useState<(typeof bitrates)[number]>("192");
-  const [permission, setPermission] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [progress, setProgress] = useState(0);
@@ -90,20 +89,77 @@ export default function Home() {
     try { const text = await navigator.clipboard.readText(); setUrl(text); resetResult(); }
     catch { setError("Paste a link using your keyboard instead."); setStage("error"); }
   };
+  const encodeAudio = async (sourceData: Blob, originalName: string, isLink: boolean) => {
+    if (sourceData.size > MAX_FILE_BYTES) throw new Error("Source media is too large for in-browser conversion.");
+    const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([import("@ffmpeg/ffmpeg"), import("@ffmpeg/util")]);
+    const ffmpeg = new FFmpeg();
+    try {
+      ffmpeg.on("progress", ({ progress: value }) => {
+        setProgress(Math.min(95, Math.round((isLink ? 50 : 0) + value * (isLink ? 45 : 95))));
+      });
+      const base = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd";
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"),
+        wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm")
+      });
+      const ext = (originalName.split(".").pop() || "bin").replace(/[^a-z0-9]/gi, "").slice(0, 8) || "bin";
+      const source = `source.${ext}`;
+      await ffmpeg.writeFile(source, await fetchFile(sourceData));
+      const status = await ffmpeg.exec(["-i", source, "-vn", "-codec:a", "libmp3lame", "-b:a", `${bitrate}k`, "output.mp3"]);
+      if (status !== 0) throw new Error("This audio could not be encoded as MP3.");
+      const result = await ffmpeg.readFile("output.mp3");
+      if (!(result instanceof Uint8Array)) throw new Error("Unexpected encoder output.");
+      const bytes = new Uint8Array(result.byteLength); bytes.set(result);
+      const blob = new Blob([bytes], { type: "audio/mpeg" });
+      if (!blob.size) throw new Error("No MP3 output was generated.");
+      const href = URL.createObjectURL(blob);
+      objectUrlRef.current = href;
+      setDownloadHref(href);
+      setFileName(safeFilename(originalName));
+      setProgress(100);
+      setStage("ready");
+    } finally {
+      ffmpeg.terminate();
+    }
+  };
   const convertLink = async () => {
-    if (!videoId || !permission) return;
+    if (!videoId) return;
     resetResult(); setStage("working"); setProgress(5);
     try {
-      const res = await fetch("/api/convert", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url, bitrate, permission: true })
+      const res = await fetch("/api/audio-source", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not start conversion.");
-      if (!data.jobId) throw new Error("Converter returned an invalid job ID.");
-      setJobId(data.jobId); setProgress(12);
+      if (!res.ok) {
+        const data = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(data?.error || "Could not retrieve audio from this link.");
+      }
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("Your browser does not support streaming downloads.");
+      const chunks: ArrayBuffer[] = [];
+      let received = 0;
+      const maxBytes = 25 * 1024 * 1024;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          received += value.byteLength;
+          if (received > maxBytes) throw new Error("Source audio exceeded the free 25 MB limit.");
+          const bytes = new Uint8Array(value.byteLength); bytes.set(value);
+          chunks.push(bytes.buffer);
+          setProgress(Math.min(48, 10 + Math.round(received / maxBytes * 38)));
+        }
+      } catch (err) {
+        await reader.cancel().catch(() => {});
+        throw err;
+      }
+      if (!received) throw new Error("The source did not return audio.");
+      setProgress(50);
+      await encodeAudio(new Blob(chunks), `youtube-${videoId}.bin`, true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unexpected conversion error."); setStage("error"); setProgress(0);
+      setError(err instanceof Error ? err.message : "Link conversion failed.");
+      setStage("error"); setProgress(0);
     }
   };
   const convertFile = async () => {
@@ -111,30 +167,9 @@ export default function Home() {
     resetResult(); setStage("working"); setProgress(1);
     try {
       if (file.size > MAX_FILE_BYTES) throw new Error("Choose a file smaller than 100 MB for in-browser conversion.");
-      const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([import("@ffmpeg/ffmpeg"), import("@ffmpeg/util")]);
-      const ffmpeg = new FFmpeg();
-      ffmpeg.on("progress", ({ progress: value }) => setProgress(Math.min(95, Math.max(5, Math.round(value * 95)))));
-      const base = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd";
-      await ffmpeg.load({
-        coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"),
-        wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm")
-      });
-      const ext = (file.name.split(".").pop() || "bin").replace(/[^a-z0-9]/gi, "").slice(0, 8) || "bin";
-      const source = `source.${ext}`;
-      await ffmpeg.writeFile(source, await fetchFile(file));
-      const status = await ffmpeg.exec(["-i", source, "-vn", "-codec:a", "libmp3lame", "-b:a", `${bitrate}k`, "output.mp3"]);
-      if (status !== 0) throw new Error("The source file could not be converted to MP3.");
-      const result = await ffmpeg.readFile("output.mp3");
-      if (!(result instanceof Uint8Array)) throw new Error("Unexpected encoder output.");
-      const bytes = new Uint8Array(result.byteLength); bytes.set(result);
-      const blob = new Blob([bytes], { type: "audio/mpeg" });
-      if (!blob.size) throw new Error("Output was empty. Please try another file.");
-      const href = URL.createObjectURL(blob);
-      objectUrlRef.current = href; setDownloadHref(href); setFileName(safeFilename(file.name));
-      setProgress(100); setStage("ready");
-      ffmpeg.terminate();
+      await encodeAudio(file, file.name, false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Browser conversion failed. Try a smaller or different file.");
+      setError(err instanceof Error ? err.message : "Browser conversion failed.");
       setStage("error"); setProgress(0);
     }
   };
@@ -152,7 +187,7 @@ export default function Home() {
           <div className="hero-copy">
             <div className="eyebrow"><Sparkles size={14}/> A BETTER WAY TO SAVE SOUND <span className="eyebrow-line"/></div>
             <h1>Good audio.<br/><span>Anywhere.</span></h1>
-            <p>Make your own media library sound incredible. Convert files to MP3 in your browser, or prepare YouTube links for authorized audio extraction.</p>
+            <p>Make your own media library sound incredible. Convert files to MP3 in your browser or convert permitted YouTube audio links without an account.</p>
             <div className="hero-details"><span><CheckCircle2 size={16}/> No account required</span><span><ShieldCheck size={16}/> Local file conversion</span></div>
           </div>
           <div className="hero-art" aria-hidden="true"><div className="record-orbit orbit-outer"><div className="record-orbit orbit-inner"><div className="record-disc"><div className="disc-glare"/><div className="disc-center"><Waves size={35}/></div></div></div></div><div className="floating-note note-one"><Music2 size={20}/></div><div className="floating-note note-two"><Headphones size={18}/></div><div className="art-caption">PRESS PLAY ON POSSIBILITY <span>↗</span></div></div>
@@ -168,7 +203,7 @@ export default function Home() {
                 <div className={`url-field ${url && !videoId ? "invalid" : ""}`}><Link2 size={18}/><input id="url-input" value={url} onChange={e => { setUrl(e.target.value); resetResult(); }} placeholder="https://youtube.com/watch?v=..." autoCapitalize="off" autoComplete="off" spellCheck={false}/><button type="button" onClick={useClipboard} aria-label="Paste from clipboard"><ClipboardPaste size={18}/></button></div>
                 {url && !videoId ? <p className="input-hint error-color">That doesn&apos;t look like a supported YouTube video link.</p> : <p className="input-hint">Supports youtube.com, youtu.be, Shorts and Live links.</p>}
                 <div className="preview-panel"><span className="field-label preview-caption">VIDEO PREVIEW</span>{preview ? <div className="preview-inner"><div className="video-thumb"><img src={preview.thumbnail} alt="YouTube video thumbnail"/><Play size={20} fill="currentColor"/></div><div className="preview-meta"><strong title={preview.title}>{preview.title}</strong><span>{preview.author}</span><a href={preview.videoUrl} target="_blank" rel="noopener noreferrer">View on YouTube <ExternalLink size={12}/></a></div><CheckCircle2 size={19} className="preview-check"/></div> : <div className="preview-empty"><span className="placeholder-icon">{previewing ? <LoaderCircle size={21} className="spin"/> : <Play size={20} fill="currentColor"/>}</span><div><strong>{previewing ? "Finding your video..." : "Your video will appear here"}</strong><span>Paste a valid link to see its details</span></div></div>}</div>
-                <label className="permission"><input type="checkbox" checked={permission} onChange={e => setPermission(e.target.checked)}/><span>I own this media or have permission to download and convert it.</span></label>
+                <p className="usage-notice"><ShieldCheck size={17} aria-hidden="true"/><span>By using AudioLift, you confirm that you own the content you download or have permission to download and convert it, in accordance with <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer">YouTube’s terms</a> and applicable law.</span></p>
               </> : <>
                 <label className="field-label" htmlFor="media-file">SELECT YOUR AUDIO OR VIDEO FILE</label>
                 <input ref={inputRef} id="media-file" className="sr-only" type="file" accept="audio/*,video/*,.m4a,.mp4,.mov,.webm,.mkv,.wav,.ogg,.flac" onChange={e => {setFile(e.target.files?.[0] || null); resetResult(); }}/>
@@ -183,11 +218,11 @@ export default function Home() {
               <div className="quality-options" role="group" aria-label="MP3 bitrate">{bitrates.map(value => <button type="button" aria-pressed={bitrate === value} key={value} className={bitrate === value ? "selected" : ""} onClick={() => {setBitrate(value); resetResult();}}>{value}{bitrate === value ? <Check size={12}/> : null}</button>)}</div>
               <div className="quality-scale"><span>SMALLER FILE</span><span>HIGHER QUALITY</span></div>
               <div className="settings-divider"/>
-              <div className="conversion-info"><div className="info-icon">{mode === "file" ? <ShieldCheck size={18}/> : <CloudOff size={18}/>}</div><div><strong>{mode === "file" ? "On-device processing" : workerConnected ? "Converter connected" : "Link preview available"}</strong><span>{mode === "file" ? "Nothing is uploaded to a server." : workerConnected ? "Authorized requests are processed by a separate audio worker." : "Link-to-MP3 download requires the processing service, which isn't connected yet."}</span></div></div>
+              <div className="conversion-info"><div className="info-icon">{mode === "file" ? <ShieldCheck size={18}/> : <CloudOff size={18}/>}</div><div><strong>{mode === "file" ? "On-device processing" : workerConnected ? "Free conversion preview" : "Converter unavailable"}</strong><span>{mode === "file" ? "Nothing is uploaded to a server." : workerConnected ? "Audio is streamed through a limited Vercel function and converted to MP3 in your browser." : "Link-to-MP3 download requires the processing service, which isn't connected yet."}</span></div></div>
               {stage === "working" ? <div className="progress-box" role="status" aria-live="polite"><div className="progress-title"><span><LoaderCircle size={16} className="spin"/> {mode === "file" ? "Encoding audio" : "Preparing audio"}</span><strong>{progress}%</strong></div><div className="progress-track"><span style={{width: `${progress}%`}}/></div><small>Keep this tab open until the conversion finishes.</small></div> : null}
               {stage === "error" && error ? <div className="alert-error" role="alert"><CircleHelp size={17}/><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss message"><X size={14}/></button></div> : null}
-              {stage === "ready" && downloadHref ? <a className="primary-button ready-button" href={downloadHref} download={fileName} target={downloadHref.startsWith("blob:") ? undefined : "_blank"} rel="noopener noreferrer"><ArrowDownToLine size={20}/> Download {fileName}</a> : <button className="primary-button" onClick={mode === "link" ? convertLink : convertFile} disabled={stage === "working" || (mode === "link" ? !videoId || !permission || !workerConnected : !file)}>{stage === "working" ? <><LoaderCircle size={19} className="spin"/> Converting...</> : <><ArrowDownToLine size={19}/> {mode === "file" ? "Convert to MP3" : "Convert link to MP3"}<ArrowRight size={18} className="button-arrow"/></>}</button>}
-              <div className="button-note"><ShieldCheck size={13}/>{mode === "file" ? "Files never leave your browser" : !workerConnected ? "URL download activates once a worker is configured" : "Authorized use only · No copyrighted downloads without permission"}</div>
+              {stage === "ready" && downloadHref ? <a className="primary-button ready-button" href={downloadHref} download={fileName} target={downloadHref.startsWith("blob:") ? undefined : "_blank"} rel="noopener noreferrer"><ArrowDownToLine size={20}/> Download {fileName}</a> : <button className="primary-button" onClick={mode === "link" ? convertLink : convertFile} disabled={stage === "working" || (mode === "link" ? !videoId || !workerConnected : !file)}>{stage === "working" ? <><LoaderCircle size={19} className="spin"/> Converting...</> : <><ArrowDownToLine size={19}/> {mode === "file" ? "Convert to MP3" : "Convert link to MP3"}<ArrowRight size={18} className="button-arrow"/></>}</button>}
+              <div className="button-note"><ShieldCheck size={13}/>{mode === "file" ? "Files never leave your browser" : !workerConnected ? "Link download is temporarily unavailable" : "10-minute limit · Own media or permitted downloads only"}</div>
             </div>
           </div>
         </section>
